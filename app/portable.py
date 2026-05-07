@@ -121,9 +121,7 @@ def render_with_browserless(url):
             f"{BROWSERLESS_URL}/content"
             f"?token={BROWSERLESS_TOKEN}"
             f"&timeout=60000"
-            f"&blockAds=true"
-            f"&blockConsentModals=true"
-            f"&humanlike=true",
+            f"&blockAds=true",
             json=payload,
             headers=googlebot_headers,
             timeout=70
