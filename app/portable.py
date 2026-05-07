@@ -47,30 +47,46 @@ def expand_shortened_url(url):
 
 def render_with_browserless(url):
     """
-    Render a page using browserless-v2 to execute JavaScript
+    Render a page using browserless-v2 to execute JavaScript.
     """
     try:
+        if not BROWSERLESS_TOKEN:
+            print("Browserless token is not set. Set BROWSERLESS_TOKEN in the 13ft container.")
+            return None
+
         payload = {
             "url": url,
-            "waitFor": 3000,  # Wait 3 seconds for JavaScript to execute
+            "gotoOptions": {
+                "waitUntil": ["domcontentloaded"],
+                "timeout": 30000
+            },
+            "waitForTimeout": 3000,
+            "bestAttempt": True,
+            "rejectResourceTypes": [
+                "image",
+                "media",
+                "font"
+            ]
         }
-        
-        headers = {}
-        if BROWSERLESS_TOKEN:
-            headers['Authorization'] = f'Bearer {BROWSERLESS_TOKEN}'
-        
+
+        headers = {
+            "Cache-Control": "no-cache",
+            "Content-Type": "application/json"
+        }
+
         response = requests.post(
-            f"{BROWSERLESS_URL}/content",
+            f"{BROWSERLESS_URL}/content?token={BROWSERLESS_TOKEN}",
             json=payload,
             headers=headers,
-            timeout=30
+            timeout=45
         )
-        
+
         if response.status_code == 200:
             return response.text
-        else:
-            print(f"Browserless error: {response.status_code} - {response.text}")
-            return None
+
+        print(f"Browserless error: {response.status_code} - {response.text}")
+        return None
+
     except Exception as e:
         print(f"Browserless rendering failed: {e}")
         return None
