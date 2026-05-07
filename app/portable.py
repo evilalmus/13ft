@@ -5,9 +5,13 @@ from flask import request
 from flask_cors import CORS
 from bs4 import BeautifulSoup
 from urllib.parse import urlparse, urljoin
+import json
 
 app = flask.Flask(__name__)
 CORS(app)
+
+# Browserless endpoint
+BROWSERLESS_URL = "http://browserless-v2:3000"
 
 # Create a cloudscraper session that mimics a modern Chrome client
 scraper = cloudscraper.create_scraper(
@@ -38,6 +42,30 @@ def expand_shortened_url(url):
     except Exception as e:
         # If expansion fails, return original URL
         return url
+
+def render_with_browserless(url):
+    """
+    Render a page using browserless-v2 to execute JavaScript
+    """
+    try:
+        payload = {
+            "url": url,
+            "waitFor": 3000,  # Wait 3 seconds for JavaScript to execute
+        }
+        
+        response = requests.post(
+            f"{BROWSERLESS_URL}/content",
+            json=payload,
+            timeout=30
+        )
+        
+        if response.status_code == 200:
+            return response.text
+        else:
+            return None
+    except Exception as e:
+        print(f"Browserless rendering failed: {e}")
+        return None
 
 def add_base_tag(html_content, original_url):
     soup = BeautifulSoup(html_content, 'html.parser')
@@ -125,7 +153,17 @@ def bypass_paywall(url):
         # Expand shortened URLs first
         url = expand_shortened_url(url)
         
-        # Try with Googlebot headers first
+        # Try rendering with browserless first for JavaScript-heavy sites
+        try:
+            html = render_with_browserless(url)
+            if html:
+                html = add_base_tag(html, url)
+                html = inject_script_wrapper(html, url)
+                return html
+        except Exception as e:
+            print(f"Browserless attempt failed: {e}")
+        
+        # Fallback to traditional requests with Googlebot headers
         try:
             response = requests.get(url, headers=googlebot_headers, timeout=10)
             response.encoding = response.apparent_encoding
@@ -137,7 +175,6 @@ def bypass_paywall(url):
                 response.encoding = response.apparent_encoding
             
             html = add_base_tag(response.text, response.url)
-            # Inject script wrapper for better JS handling
             html = inject_script_wrapper(html, response.url)
             return html
         except Exception as e:
@@ -156,7 +193,7 @@ def bypass_paywall(url):
     except requests.exceptions.RequestException as e:
         return bypass_paywall("http://" + url)
 
-@app.route('/')
+@app.route('/', methods=['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS'])
 def index():
     url = request.args.get('url')
     if url:
