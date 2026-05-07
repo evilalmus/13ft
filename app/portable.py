@@ -7,6 +7,8 @@ from bs4 import BeautifulSoup
 from urllib.parse import urlparse, urljoin
 import json
 import os
+import time
+from urllib.parse import urlparse
 
 app = flask.Flask(__name__)
 CORS(app)
@@ -14,6 +16,10 @@ CORS(app)
 # Browserless endpoint and token
 BROWSERLESS_URL = "http://browserless-v2:3000"
 BROWSERLESS_TOKEN = os.environ.get('BROWSERLESS_TOKEN', '')
+LAST_REQUEST_BY_HOST = {}
+MIN_SECONDS_BETWEEN_HOST_REQUESTS = 8
+SNAPSHOT_CACHE = {}
+SNAPSHOT_CACHE_TTL_SECONDS = 300
 
 # Create a cloudscraper session that mimics a modern Chrome client
 scraper = cloudscraper.create_scraper(
@@ -34,6 +40,38 @@ googlebot_headers = {
 }
 scraper.headers.update(googlebot_headers)
 
+def throttle_host(url):
+    """
+    Polite per-host pacing so the app does not hammer the same site repeatedly.
+    """
+    host = urlparse(url).netloc.lower()
+    now = time.time()
+
+    last = LAST_REQUEST_BY_HOST.get(host, 0)
+    elapsed = now - last
+
+    if elapsed < MIN_SECONDS_BETWEEN_HOST_REQUESTS:
+        sleep_for = MIN_SECONDS_BETWEEN_HOST_REQUESTS - elapsed
+        print(f"Throttling {host} for {sleep_for:.1f}s")
+        time.sleep(sleep_for)
+
+    LAST_REQUEST_BY_HOST[host] = time.time()
+
+def get_cached_snapshot(url):
+    entry = SNAPSHOT_CACHE.get(url)
+    if not entry:
+        return None
+
+    created_at, html = entry
+    if time.time() - created_at > SNAPSHOT_CACHE_TTL_SECONDS:
+        SNAPSHOT_CACHE.pop(url, None)
+        return None
+
+    return html
+
+def set_cached_snapshot(url, html):
+    SNAPSHOT_CACHE[url] = (time.time(), html)
+    
 def expand_shortened_url(url):
     """
     Expand shortened URLs (e.g., bit.ly, tinyurl, etc.)
@@ -63,9 +101,9 @@ def render_with_browserless(url):
             "url": url,
             "gotoOptions": {
                 "waitUntil": ["domcontentloaded"],
-                "timeout": 30000
+                "timeout": 45000
             },
-            "waitForTimeout": 3000,
+            "waitForTimeout": 5000,
             "bestAttempt": True,
             "rejectResourceTypes": [
 #                "image",
@@ -80,10 +118,16 @@ def render_with_browserless(url):
         }
 
         response = requests.post(
-            f"{BROWSERLESS_URL}/content?token={BROWSERLESS_TOKEN}",
+            f"{BROWSERLESS_URL}/content
+            f?token={BROWSERLESS_TOKEN}"
+            f"&timeout=60000"
+            f"&blockAds=true"
+            f"&blockConsentModals=true"
+            f"&humanlike=true"
+            f"stealth=true",
             json=payload,
-            headers=headers,
-            timeout=45
+            headers=googlebot_headers,
+            timeout=70
         )
 
         if response.status_code == 200:
@@ -182,13 +226,21 @@ def bypass_paywall(url, snapshot=False):
     """
     url = normalize_url(url)
     url = expand_shortened_url(url)
+    throttle_host(url)
+    
     # Try rendering with browserless first for JavaScript-heavy sites
     if snapshot:
+        cached = get_cached_snapshot(url)
+        if cached:
+            print(f"Using cached snapshot for {url}")
+            return cached
+        
         try:
             html = render_with_browserless(url)
             if html:
                 html = make_static_snapshot(html)
                 html = add_base_tag(html, url)
+                set_cached_snapshot(url, html)
 #                   html = add_base_tag(html, url)
 #                   html = inject_script_wrapper(html, url)
                 return html
