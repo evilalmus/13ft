@@ -123,8 +123,7 @@ def render_with_browserless(url):
             f"&timeout=60000"
             f"&blockAds=true"
             f"&blockConsentModals=true"
-            f"&humanlike=true"
-            f"stealth=true",
+            f"&humanlike=true",
             json=payload,
             headers=googlebot_headers,
             timeout=70
