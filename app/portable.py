@@ -19,7 +19,7 @@ scraper = cloudscraper.create_scraper(
 )
 
 googlebot_headers = {
-    "User-Agent": "Mozilla/5.0 (Linux; Android 6.0.1; Nexus 5X Build/MMB29P) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.6533.119 Mobile Safari/537.36 (compatible; Googlebot/2.1; +http://w[...]",
+    "User-Agent": "Mozilla/5.0 (Linux; Android 6.0.1; Nexus 5X Build/MMB29P) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.6533.119 Mobile Safari/537.36 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)",
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
     "Accept-Language": "en-US,en;q=0.5",
     "DNT": "1",
@@ -28,7 +28,16 @@ googlebot_headers = {
 }
 scraper.headers.update(googlebot_headers)
 
-# ... [rest of existing HTML and helper functions remain the same] ...
+def expand_shortened_url(url):
+    """
+    Expand shortened URLs (e.g., bit.ly, tinyurl, etc.)
+    """
+    try:
+        response = requests.head(url, allow_redirects=True, timeout=5)
+        return response.url
+    except Exception as e:
+        # If expansion fails, return original URL
+        return url
 
 def add_base_tag(html_content, original_url):
     soup = BeautifulSoup(html_content, 'html.parser')
@@ -146,6 +155,7 @@ def bypass_paywall(url):
         return bypass_paywall("https://" + url)
     except requests.exceptions.RequestException as e:
         return bypass_paywall("http://" + url)
+
 @app.route('/')
 def index():
     url = request.args.get('url')
@@ -154,7 +164,83 @@ def index():
             return bypass_paywall(url)
         except Exception as e:
             return f"Error: {str(e)}", 500
-    return "Welcome to 13ft! Use ?url=<encoded-url> to bypass paywalls", 200
+    
+    # Serve the GUI when no URL is provided
+    gui_html = """
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>13ft - Paywall Bypass</title>
+        <style>
+            body {
+                font-family: Arial, sans-serif;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                min-height: 100vh;
+                margin: 0;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            }
+            .container {
+                background: white;
+                padding: 40px;
+                border-radius: 10px;
+                box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+                max-width: 500px;
+                width: 90%;
+            }
+            h1 {
+                color: #333;
+                text-align: center;
+                margin: 0 0 20px 0;
+            }
+            p {
+                color: #666;
+                text-align: center;
+                margin: 0 0 20px 0;
+            }
+            .input-group {
+                display: flex;
+                gap: 10px;
+                margin-bottom: 20px;
+            }
+            input[type="text"] {
+                flex: 1;
+                padding: 12px;
+                border: 1px solid #ddd;
+                border-radius: 5px;
+                font-size: 14px;
+            }
+            button {
+                padding: 12px 20px;
+                background: #667eea;
+                color: white;
+                border: none;
+                border-radius: 5px;
+                cursor: pointer;
+                font-size: 14px;
+                font-weight: bold;
+            }
+            button:hover {
+                background: #764ba2;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>13ft</h1>
+            <p>Bypass paywalls and access restricted content</p>
+            <form method="GET" action="/">
+                <div class="input-group">
+                    <input type="text" name="url" placeholder="Enter URL..." required>
+                    <button type="submit">Bypass</button>
+                </div>
+            </form>
+        </div>
+    </body>
+    </html>
+    """
+    return gui_html
 
 @app.route('/favicon.ico')
 def favicon():
