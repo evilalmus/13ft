@@ -63,9 +63,9 @@ def render_with_browserless(url):
             "waitForTimeout": 3000,
             "bestAttempt": True,
             "rejectResourceTypes": [
-                "image",
-                "media",
-                "font"
+#                "image",
+#                "font",
+                "media"
             ]
         }
 
@@ -82,6 +82,8 @@ def render_with_browserless(url):
         )
 
         if response.status_code == 200:
+            print(f"Browserless returned {len(response.text)} bytes for {url}")
+            print(response.text[:500])
             return response.text
 
         print(f"Browserless error: {response.status_code} - {response.text}")
@@ -181,8 +183,10 @@ def bypass_paywall(url):
         try:
             html = render_with_browserless(url)
             if html:
+                html = make_static_snapshot(html)
                 html = add_base_tag(html, url)
-                html = inject_script_wrapper(html, url)
+#                html = add_base_tag(html, url)
+#                html = inject_script_wrapper(html, url)
                 return html
         except Exception as e:
             print(f"Browserless attempt failed: {e}")
@@ -217,6 +221,21 @@ def bypass_paywall(url):
     except requests.exceptions.RequestException as e:
         return bypass_paywall("http://" + url)
 
+def make_static_snapshot(html_content):
+    """
+    Browserless already executed JavaScript. Remove scripts so the returned
+    page does not try to hydrate/reboot inside the proxy origin.
+    """
+    soup = BeautifulSoup(html_content, "html.parser")
+
+    for tag in soup.find_all("script"):
+        tag.decompose()
+
+    for tag in soup.find_all("noscript"):
+        tag.decompose()
+
+    return str(soup)
+    
 @app.route('/', methods=['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS'])
 def index():
     url = request.args.get('url')
