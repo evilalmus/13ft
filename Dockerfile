@@ -20,11 +20,11 @@ LABEL org.opencontainers.image.licenses=MIT
 
 WORKDIR /app
 
-# Install bash and other useful tools
-RUN apk add --no-cache bash
+# Install bash and build dependencies needed for cloudscraper
+RUN apk add --no-cache bash gcc musl-dev libffi-dev openssl-dev
 
 COPY . .
-RUN pip install -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
 EXPOSE 5000
 ENTRYPOINT [ "python" ]
