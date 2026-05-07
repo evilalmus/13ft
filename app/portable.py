@@ -39,7 +39,12 @@ def expand_shortened_url(url):
     Expand shortened URLs (e.g., bit.ly, tinyurl, etc.)
     """
     try:
-        response = requests.head(url, allow_redirects=True, timeout=5)
+        response = requests.head(
+            url,
+            allow_redirects=True,
+            timeout=(3, 5),
+            headers=googlebot_headers
+        )
         return response.url
     except Exception as e:
         # If expansion fails, return original URL
@@ -173,55 +178,49 @@ def inject_script_wrapper(html_content, target_url):
 
 def bypass_paywall(url, snapshot=False):
     """
-    Bypass paywall for a given url
+    Fetch/render a URL using either Browserless snapshot mode or regular proxy mode.
     """
-    if url.startswith("http"):
-        # Expand shortened URLs first
-        url = expand_shortened_url(url)
-        
-        # Try rendering with browserless first for JavaScript-heavy sites
-        if snapshot:
-            try:
-                html = render_with_browserless(url)
-                if html:
-                    html = make_static_snapshot(html)
-                    html = add_base_tag(html, url)
-#                    html = add_base_tag(html, url)
-#                    html = inject_script_wrapper(html, url)
-                    return html
-            except Exception as e:
-                print(f"Browserless snapshot attempt failed: {e}")
-        
-        # Fallback to traditional requests with Googlebot headers
-            try:
-                response = requests.get(url, headers=googlebot_headers, timeout=10)
-                response.encoding = response.apparent_encoding
-            
-                # Check if we got a Cloudflare challenge page
-                if 'cdn-cgi/challenge-platform' in response.text or response.status_code == 403 or 'Invalid domain' in response.text:
-                    # Fallback to cloudscraper for Cloudflare-protected sites
-                    response = scraper.get(url, timeout=10, headers=googlebot_headers)
-                    response.encoding = response.apparent_encoding
-            
-                html = add_base_tag(response.text, response.url)
-                html = inject_script_wrapper(html, response.url)
+    url = normalize_url(url)
+    url = expand_shortened_url(url)
+    # Try rendering with browserless first for JavaScript-heavy sites
+    if snapshot:
+        try:
+            html = render_with_browserless(url)
+            if html:
+                html = make_static_snapshot(html)
+                html = add_base_tag(html, url)
+#                   html = add_base_tag(html, url)
+#                   html = inject_script_wrapper(html, url)
                 return html
-            except Exception as e:
-                # If requests fails, try cloudscraper
-                try:
-                    response = scraper.get(url, timeout=10, headers=googlebot_headers)
-                    response.encoding = response.apparent_encoding
-                    html = add_base_tag(response.text, response.url)
-                    html = inject_script_wrapper(html, response.url)
-                    return html
-                except Exception as scraper_error:
-                    raise e  # Raise original error if both fail
-
+        except Exception as e:
+            print(f"Browserless snapshot attempt failed: {e}")
+        # Fallback to traditional requests with Googlebot headers
     try:
-        return bypass_paywall("https://" + url)
-    except requests.exceptions.RequestException as e:
-        return bypass_paywall("http://" + url)
-
+        response = requests.get(url, headers=googlebot_headers, timeout=10)
+        response.encoding = response.apparent_encoding
+        # Check if we got a Cloudflare challenge page
+        if 'cdn-cgi/challenge-platform' in response.text or response.status_code == 403 or 'Invalid domain' in response.text:
+            # Fallback to cloudscraper for Cloudflare-protected sites
+            response = scraper.get(url, timeout=10, headers=googlebot_headers)
+            response.encoding = response.apparent_encoding            
+        html = add_base_tag(response.text, response.url)
+        html = inject_script_wrapper(html, response.url)
+        return html
+    except Exception as e:
+        # If requests fails, try cloudscraper
+        try:
+            response = scraper.get(url, timeout=10, headers=googlebot_headers)
+            response.encoding = response.apparent_encoding
+            html = add_base_tag(response.text, response.url)
+            html = inject_script_wrapper(html, response.url)
+            return html
+        except Exception as scraper_error:
+            print(f"Cloudscraper fallback failed: {type(scraper_error).__name__}: {scraper_error}")
+            return (
+                f"Error loading URL in regular proxy mode: {first_error}",
+                502
+            )
+            
 def make_static_snapshot(html_content):
     """
     Browserless already executed JavaScript. Remove scripts so the returned
@@ -236,6 +235,23 @@ def make_static_snapshot(html_content):
         tag.decompose()
 
     return str(soup)
+
+def normalize_url(url):
+    """
+    Normalize user-entered URLs without recursive retry loops.
+    """
+    url = (url or "").strip()
+
+    if not url:
+        raise ValueError("No URL provided")
+
+    if url.startswith("//"):
+        return "https:" + url
+
+    if url.startswith("http://") or url.startswith("https://"):
+        return url
+
+    return "https://" + url
     
 @app.route('/', methods=['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS'])
 def index():
