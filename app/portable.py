@@ -8,7 +8,6 @@ from urllib.parse import urlparse, urljoin
 import json
 import os
 import time
-from urllib.parse import urlparse
 
 app = flask.Flask(__name__)
 CORS(app)
@@ -136,7 +135,10 @@ def render_with_browserless(url):
     """
     try:
         if not BROWSERLESS_TOKEN:
-            print("Browserless token is not set. Set BROWSERLESS_TOKEN in the 13ft container.")
+            print(
+                "Browserless token is not set. Set BROWSERLESS_TOKEN in the 13ft container.",
+                flush=True
+            )
             return None
 
         payload = {
@@ -148,8 +150,6 @@ def render_with_browserless(url):
             "waitForTimeout": 5000,
             "bestAttempt": True,
             "rejectResourceTypes": [
-#                "image",
-#                "font",
                 "media"
             ]
         }
@@ -159,21 +159,27 @@ def render_with_browserless(url):
             "Content-Type": "application/json"
         }
 
+        endpoint = (
+            f"{BROWSERLESS_URL}/content"
+            f"?token={BROWSERLESS_TOKEN}"
+            f"&timeout=60000"
+            f"&blockAds=true"
+        )
+
+        request_timeout = 70
+
         log_browserless_request(
             endpoint=endpoint,
             headers=headers,
             payload=payload,
             timeout=request_timeout
         )
-        
+
         response = requests.post(
-            f"{BROWSERLESS_URL}/content"
-            f"?token={BROWSERLESS_TOKEN}"
-            f"&timeout=60000"
-            f"&blockAds=true",
+            endpoint,
             json=payload,
-            headers=googlebot_headers,
-            timeout=70
+            headers=headers,
+            timeout=request_timeout
         )
 
         print("\n=== Browserless Response ===", flush=True)
@@ -183,19 +189,22 @@ def render_with_browserless(url):
         print(f"Body length: {len(response.text)} bytes", flush=True)
         print(f"Body preview: {response.text[:500]}", flush=True)
         print("============================\n", flush=True)
-        
+
         if response.status_code == 200:
-            print(f"Browserless returned {len(response.text)} bytes for {url}")
-            print(response.text[:500])
             return response.text
 
-        print(f"Browserless error: {response.status_code} - {response.text}")
+        print(
+            f"Browserless error: {response.status_code} - {response.text}",
+            flush=True
+        )
         return None
 
     except Exception as e:
-        print(f"Browserless rendering failed: {e}")
+        print(
+            f"Browserless rendering failed: {type(e).__name__}: {e}",
+            flush=True
+        )
         return None
-
 def add_base_tag(html_content, original_url):
     soup = BeautifulSoup(html_content, 'html.parser')
     parsed_url = urlparse(original_url)
@@ -312,16 +321,31 @@ def bypass_paywall(url, snapshot=False):
         html = add_base_tag(response.text, response.url)
         html = inject_script_wrapper(html, response.url)
         return html
-    except Exception as e:
-        # If requests fails, try cloudscraper
+
+    except Exception as first_error:
+        print(
+            f"Regular requests mode failed: {type(first_error).__name__}: {first_error}",
+            flush=True
+        )
+
         try:
-            response = scraper.get(url, timeout=10, headers=googlebot_headers)
+            response = scraper.get(
+                url,
+                timeout=(5, 15),
+                headers=googlebot_headers,
+                allow_redirects=True
+            )
             response.encoding = response.apparent_encoding
+
             html = add_base_tag(response.text, response.url)
             html = inject_script_wrapper(html, response.url)
             return html
+
         except Exception as scraper_error:
-            print(f"Cloudscraper fallback failed: {type(scraper_error).__name__}: {scraper_error}")
+            print(
+                f"Cloudscraper fallback failed: {type(scraper_error).__name__}: {scraper_error}",
+                flush=True
+            )
             return (
                 f"Error loading URL in regular proxy mode: {first_error}",
                 502
