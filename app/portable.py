@@ -146,6 +146,19 @@ def bypass_paywall(url):
         return bypass_paywall("https://" + url)
     except requests.exceptions.RequestException as e:
         return bypass_paywall("http://" + url)
+@app.route('/')
+def index():
+    url = request.args.get('url')
+    if url:
+        try:
+            return bypass_paywall(url)
+        except Exception as e:
+            return f"Error: {str(e)}", 500
+    return "Welcome to 13ft! Use ?url=<encoded-url> to bypass paywalls", 200
 
+@app.route('/favicon.ico')
+def favicon():
+    return '', 204
+    
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=False)
