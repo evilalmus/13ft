@@ -118,8 +118,8 @@ def render_with_browserless(url):
         }
 
         response = requests.post(
-            f"{BROWSERLESS_URL}/content
-            f?token={BROWSERLESS_TOKEN}"
+            f"{BROWSERLESS_URL}/content"
+            f"?token={BROWSERLESS_TOKEN}"
             f"&timeout=60000"
             f"&blockAds=true"
             f"&blockConsentModals=true"
