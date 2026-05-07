@@ -151,7 +151,8 @@ def render_with_browserless(url):
             "bestAttempt": True,
             "rejectResourceTypes": [
                 "media"
-            ]
+            ],
+            "setExtraHTTPHeaders": googlebot_headers
         }
 
         headers = {
