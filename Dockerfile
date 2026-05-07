@@ -27,5 +27,5 @@ COPY . .
 RUN pip install --no-cache-dir -r requirements.txt
 
 EXPOSE 5000
-ENTRYPOINT [ "python" ]
-CMD [ "python", "-m", "gunicorn", "--bind", "0.0.0.0:5000", "app.portable:app" ]
+ENTRYPOINT [ "python", "-m", "gunicorn" ]
+CMD [ "--bind", "0.0.0.0:5000", "app.portable:app" ]
