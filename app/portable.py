@@ -40,6 +40,48 @@ googlebot_headers = {
 }
 scraper.headers.update(googlebot_headers)
 
+def redact_secret(value, visible=4):
+    """
+    Redact secrets in logs while leaving enough characters to confirm
+    the expected value is being used.
+    """
+    if not value:
+        return ""
+
+    value = str(value)
+
+    if len(value) <= visible * 2:
+        return "***"
+
+    return f"{value[:visible]}...{value[-visible:]}"
+
+
+def log_browserless_request(endpoint, headers, payload, timeout):
+    """
+    Log the exact Browserless request details without exposing the full token.
+    """
+    safe_endpoint = endpoint
+
+    if BROWSERLESS_TOKEN:
+        safe_endpoint = safe_endpoint.replace(
+            BROWSERLESS_TOKEN,
+            redact_secret(BROWSERLESS_TOKEN)
+        )
+
+    safe_headers = dict(headers)
+
+    if "Authorization" in safe_headers:
+        safe_headers["Authorization"] = "Bearer " + redact_secret(BROWSERLESS_TOKEN)
+
+    print("\n=== Browserless Request ===", flush=True)
+    print(f"Endpoint: {safe_endpoint}", flush=True)
+    print(f"Timeout: {timeout}", flush=True)
+    print("Headers:", flush=True)
+    print(json.dumps(safe_headers, indent=2), flush=True)
+    print("Payload:", flush=True)
+    print(json.dumps(payload, indent=2), flush=True)
+    print("===========================\n", flush=True)
+    
 def throttle_host(url):
     """
     Polite per-host pacing so the app does not hammer the same site repeatedly.
@@ -117,6 +159,13 @@ def render_with_browserless(url):
             "Content-Type": "application/json"
         }
 
+        log_browserless_request(
+            endpoint=endpoint,
+            headers=headers,
+            payload=payload,
+            timeout=request_timeout
+        )
+        
         response = requests.post(
             f"{BROWSERLESS_URL}/content"
             f"?token={BROWSERLESS_TOKEN}"
@@ -127,6 +176,14 @@ def render_with_browserless(url):
             timeout=70
         )
 
+        print("\n=== Browserless Response ===", flush=True)
+        print(f"Status: {response.status_code}", flush=True)
+        print("Response headers:", flush=True)
+        print(json.dumps(dict(response.headers), indent=2), flush=True)
+        print(f"Body length: {len(response.text)} bytes", flush=True)
+        print(f"Body preview: {response.text[:500]}", flush=True)
+        print("============================\n", flush=True)
+        
         if response.status_code == 200:
             print(f"Browserless returned {len(response.text)} bytes for {url}")
             print(response.text[:500])
