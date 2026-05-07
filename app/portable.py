@@ -6,12 +6,14 @@ from flask_cors import CORS
 from bs4 import BeautifulSoup
 from urllib.parse import urlparse, urljoin
 import json
+import os
 
 app = flask.Flask(__name__)
 CORS(app)
 
-# Browserless endpoint
+# Browserless endpoint and token
 BROWSERLESS_URL = "http://browserless-v2:3000"
+BROWSERLESS_TOKEN = os.environ.get('BROWSERLESS_TOKEN', '')
 
 # Create a cloudscraper session that mimics a modern Chrome client
 scraper = cloudscraper.create_scraper(
@@ -53,15 +55,21 @@ def render_with_browserless(url):
             "waitFor": 3000,  # Wait 3 seconds for JavaScript to execute
         }
         
+        headers = {}
+        if BROWSERLESS_TOKEN:
+            headers['Authorization'] = f'Bearer {BROWSERLESS_TOKEN}'
+        
         response = requests.post(
             f"{BROWSERLESS_URL}/content",
             json=payload,
+            headers=headers,
             timeout=30
         )
         
         if response.status_code == 200:
             return response.text
         else:
+            print(f"Browserless error: {response.status_code} - {response.text}")
             return None
     except Exception as e:
         print(f"Browserless rendering failed: {e}")
