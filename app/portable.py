@@ -171,7 +171,7 @@ def inject_script_wrapper(html_content, target_url):
     
     return str(soup)
 
-def bypass_paywall(url):
+def bypass_paywall(url, snapshot=False):
     """
     Bypass paywall for a given url
     """
@@ -180,41 +180,42 @@ def bypass_paywall(url):
         url = expand_shortened_url(url)
         
         # Try rendering with browserless first for JavaScript-heavy sites
-        try:
-            html = render_with_browserless(url)
-            if html:
-                html = make_static_snapshot(html)
-                html = add_base_tag(html, url)
-#                html = add_base_tag(html, url)
-#                html = inject_script_wrapper(html, url)
-                return html
-        except Exception as e:
-            print(f"Browserless attempt failed: {e}")
+        if snapshot:
+            try:
+                html = render_with_browserless(url)
+                if html:
+                    html = make_static_snapshot(html)
+                    html = add_base_tag(html, url)
+#                    html = add_base_tag(html, url)
+#                    html = inject_script_wrapper(html, url)
+                    return html
+            except Exception as e:
+                print(f"Browserless snapshot attempt failed: {e}")
         
         # Fallback to traditional requests with Googlebot headers
-        try:
-            response = requests.get(url, headers=googlebot_headers, timeout=10)
-            response.encoding = response.apparent_encoding
-            
-            # Check if we got a Cloudflare challenge page
-            if 'cdn-cgi/challenge-platform' in response.text or response.status_code == 403 or 'Invalid domain' in response.text:
-                # Fallback to cloudscraper for Cloudflare-protected sites
-                response = scraper.get(url, timeout=10, headers=googlebot_headers)
-                response.encoding = response.apparent_encoding
-            
-            html = add_base_tag(response.text, response.url)
-            html = inject_script_wrapper(html, response.url)
-            return html
-        except Exception as e:
-            # If requests fails, try cloudscraper
             try:
-                response = scraper.get(url, timeout=10, headers=googlebot_headers)
+                response = requests.get(url, headers=googlebot_headers, timeout=10)
                 response.encoding = response.apparent_encoding
+            
+                # Check if we got a Cloudflare challenge page
+                if 'cdn-cgi/challenge-platform' in response.text or response.status_code == 403 or 'Invalid domain' in response.text:
+                    # Fallback to cloudscraper for Cloudflare-protected sites
+                    response = scraper.get(url, timeout=10, headers=googlebot_headers)
+                    response.encoding = response.apparent_encoding
+            
                 html = add_base_tag(response.text, response.url)
                 html = inject_script_wrapper(html, response.url)
                 return html
-            except Exception as scraper_error:
-                raise e  # Raise original error if both fail
+            except Exception as e:
+                # If requests fails, try cloudscraper
+                try:
+                    response = scraper.get(url, timeout=10, headers=googlebot_headers)
+                    response.encoding = response.apparent_encoding
+                    html = add_base_tag(response.text, response.url)
+                    html = inject_script_wrapper(html, response.url)
+                    return html
+                except Exception as scraper_error:
+                    raise e  # Raise original error if both fail
 
     try:
         return bypass_paywall("https://" + url)
@@ -239,9 +240,11 @@ def make_static_snapshot(html_content):
 @app.route('/', methods=['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS'])
 def index():
     url = request.args.get('url')
+    snapshot = request.args.get('snapshot') == '1'
+
     if url:
         try:
-            return bypass_paywall(url)
+            return bypass_paywall(url, snapshot=snapshot)
         except Exception as e:
             return f"Error: {str(e)}", 500
     
@@ -304,6 +307,25 @@ def index():
             button:hover {
                 background: #764ba2;
             }
+            .checkbox-row {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                color: #444;
+                font-size: 14px;
+                margin: 10px 0 8px 0;
+            }
+            .checkbox-row input {
+                width: 16px;
+                height: 16px;
+            }
+            .hint {
+                color: #777;
+                font-size: 12px;
+                text-align: left;
+                margin-top: 8px;
+                line-height: 1.4;
+            }
         </style>
     </head>
     <body>
@@ -313,8 +335,17 @@ def index():
             <form method="GET" action="/">
                 <div class="input-group">
                     <input type="text" name="url" placeholder="Enter URL..." required>
-                    <button type="submit">Bypass</button>
+                    <button type="submit">Load</button>
                 </div>
+
+                <label class="checkbox-row">
+                    <input type="checkbox" name="snapshot" value="1" checked>
+                    Use Browserless snapshot mode
+                </label>
+
+                <p class="hint">
+                    Snapshot mode renders the page first, then serves a static copy. Turn it off for regular proxy mode.
+                </p>
             </form>
         </div>
     </body>
